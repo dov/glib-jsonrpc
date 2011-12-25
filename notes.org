@@ -4,7 +4,7 @@
 - [X] Compiled glib-jsonrpc version 0.14.0 for windows.
 - [X] Installed in /usr/local
 - [X] Created server that receives and parses json and returns a json object.
-- [ ] Created simple test script file:test-client.py that speaks to the server.
+- [X] Created simple test script file:test-client.py that speaks to the server.
 * <2011-11-18 Fri>
 ** References
    - gnet xmlrpc-server: file:/home/dov/github/gemtcl/src/xmlrpc-server.c
@@ -18,4 +18,17 @@
    - Solved the problem of asynchronous commands by creating a mutex that is set in the handler function whenever there is an asynchronous command.
    - Currently there is only one mutex in the server, and when the handler is in a asynchronous command it should be set busy, and refuse to do another asynchronous command.
    - [X] Add AsyncBusy status to handler and refuse to run the command if busy.
-   - [ ] Check server location and refuse to run from remote server.
+   - [X] Check server location and refuse to run from remote server.
+* <2011-12-23 Fri>
+** Done/Todo
+   - [X] Create a client in C.
+   - [X] Check server location or send an email to the glib list asking how to do it. *Ok* I was releasing the memory too early.
+* <2011-12-25 Sun>
+** Done/Todo
+   - [X] Created a utility library ~glib-jsonrpc-json~ that contains a few utility routines.
+   - [X] Created an example jsonrpc client in  ~test-glib-jsonrpc-client.c~.
+   - [X] Added LGPL v 2 notes in all libraries.
+   - [ ] Improve error handling!
+   
+   
+   

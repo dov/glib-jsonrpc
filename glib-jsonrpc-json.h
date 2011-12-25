@@ -29,4 +29,7 @@ gchar *glib_jsonrpc_json_to_string(JsonNode *node);
 // Convenience function for turning a string list into a newly allocated json array
 JsonNode *glib_jsonrpc_json_csv_to_json_array(const char *string);
 
+// A general json parser
+JsonNode *glib_jsonrpc_json_string_to_json_node(const gchar *str);
+
 #endif /* GLIB_JSONRPC_JSON */

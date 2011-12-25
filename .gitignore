@@ -1,1 +1,5 @@
 /.sconsign.dblite
+*.o
+*.a
+/test-glib-jsonrpc-server
+/test-glib-jsonrpc-client

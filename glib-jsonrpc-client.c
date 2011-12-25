@@ -38,20 +38,23 @@ GLibJsonRpcClient *glib_jsonrpc_client_new(const char *hostname, int port)
 
   GResolver *resolver = g_resolver_get_default();
   GList *addresses = g_resolver_lookup_by_name(resolver,hostname,NULL,NULL);
-  if (!addresses) {
-    glib_jsonrpc_client_free((GLibJsonRpcClient*)selfp);
-    return NULL;
-  }
+  if (!addresses)
+    {
+      glib_jsonrpc_client_free((GLibJsonRpcClient*)selfp);
+      return NULL;
+    }
   GInetAddress *address = (GInetAddress*)g_list_nth_data(addresses, 0);
 
   selfp->client = g_socket_client_new();
   GSocketAddress *sockaddr = g_inet_socket_address_new(address, port);
   selfp->connection = g_socket_client_connect (selfp->client, G_SOCKET_CONNECTABLE(sockaddr), NULL, NULL);
   g_resolver_free_addresses(addresses);
-  if (!selfp->connection) {
-    glib_jsonrpc_client_free((GLibJsonRpcClient*)selfp);
-    return NULL;
-  }
+
+  if (!selfp->connection)
+    {
+      glib_jsonrpc_client_free((GLibJsonRpcClient*)selfp);
+      return NULL;
+    }
     
   return (GLibJsonRpcClient*)selfp;
 }
@@ -92,10 +95,7 @@ int glib_jsonrpc_client_call(GLibJsonRpcClient *client,
   JsonNode *node = json_builder_get_root(builder);
   char *content_string = glib_jsonrpc_json_to_string(node);
   if (!content_string)
-  {
-    printf("Empty content string!\n");
     return -1;
-  }
   g_object_unref(builder);
 
   g_string_append_printf(http_string,
@@ -110,7 +110,6 @@ int glib_jsonrpc_client_call(GLibJsonRpcClient *client,
 
   g_string_append(http_string, content_string);
   g_free(content_string);
-  printf("http_string = %s\n", http_string->str);
 
   g_output_stream_write (out,
                          http_string->str,
@@ -127,25 +126,25 @@ int glib_jsonrpc_client_call(GLibJsonRpcClient *client,
   GError *error = NULL;
   while (0 < (size = g_input_stream_read (in, buffer,
                                           sizeof buffer, NULL, NULL)))
-  {
-    int header_size = 0;
-
-    if (skip_header) {
-      gchar *head_end = g_strstr_len(buffer, size,
-                                     "\r\n\r\n");
-      if (head_end > 0)
-        header_size = head_end - buffer;
+    {
+      int header_size = 0;
+      
+      if (skip_header)
+        {
+          gchar *head_end = g_strstr_len(buffer, size,
+                                         "\r\n\r\n");
+          if (head_end > 0)
+              header_size = head_end - buffer;
+          else
+              continue;
+        }
+      
+      g_string_append_len(json_string, buffer+header_size, size-header_size);
+      if (json_parser_load_from_data(parser, json_string->str, -1, &error))
+          break;
       else
-        continue;
+          g_error_free(error);
     }
-
-    g_string_append_len(json_string, buffer+header_size, size-header_size);
-    if (json_parser_load_from_data(parser, json_string->str, -1, &error))
-      break;
-    else
-      g_error_free(error);
-  }
-  printf("json_string = %s\n", json_string->str);
   JsonNode *root_object = json_parser_get_root(parser);
   *response = json_node_copy(json_object_get_member(json_node_get_object(root_object), "result"));
   g_object_unref(parser);

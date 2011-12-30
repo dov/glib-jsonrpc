@@ -74,21 +74,22 @@ int cmd_echo(GLibJsonRpcServer *server,
 // Global variables for this test only
 gboolean async_pong(gpointer data)
 {
-  GLibJsonRpcServer *server = (GLibJsonRpcServer*)data;
+  GLibJsonRpcAsyncQuery *query = (GLibJsonRpcAsyncQuery*)data;
   JsonNode *response = json_node_new(JSON_NODE_VALUE);
   json_node_set_string(response, "async_pong");
 
-  glib_jsonrpc_server_send_async_response(server,
+  glib_jsonrpc_server_send_async_response(query,
                                           response);
   return 0;
 }
 
 int cmd_async_ping(GLibJsonRpcServer *server,
+                   GLibJsonRpcAsyncQuery *query,
                    const char *method,
                    JsonNode *params,
                    gpointer user_data)
 {
-  g_timeout_add_seconds(2, async_pong, server);
+  g_timeout_add_seconds(2, async_pong, query);
 
   return 0;
 }
@@ -123,3 +124,4 @@ int main(int argc, char **argv)
 
   exit(0);
 }
+

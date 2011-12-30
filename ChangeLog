@@ -1,0 +1,4 @@
+2011-12-30  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+        * glib-jsonrpc-server.c, glib-jsonrpc-client.c: Moved the mutex into a new client variable.
+

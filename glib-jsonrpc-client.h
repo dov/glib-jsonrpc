@@ -24,6 +24,10 @@
 
 #include "json-glib/json-glib.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
 } GLibJsonRpcClient; 
 
@@ -35,5 +39,10 @@ int glib_jsonrpc_client_call(GLibJsonRpcClient *client,
                              JsonNode *params,
                              // output
                              JsonNode **response);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* GLIB_JSONRPC_CLIENT */

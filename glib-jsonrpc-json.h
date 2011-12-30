@@ -23,6 +23,10 @@
 
 #include <json-glib/json-glib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Allocate and convert a json node to a string
 gchar *glib_jsonrpc_json_to_string(JsonNode *node);
 
@@ -31,5 +35,10 @@ JsonNode *glib_jsonrpc_json_csv_to_json_array(const char *string);
 
 // A general json parser
 JsonNode *glib_jsonrpc_json_string_to_json_node(const gchar *str);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* GLIB_JSONRPC_JSON */

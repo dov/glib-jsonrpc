@@ -29,8 +29,6 @@ typedef struct {
   GSocketService *service;
   GHashTable *command_hash;
   GString *req_string;
-  GMutex *mutex;
-  JsonNode *reply;
   gboolean allow_non_loopback_connections;
 
   // This is set whenever an asynchronous command is being run. Only
@@ -45,6 +43,35 @@ typedef struct {
   JsonNode *reply;
 } command_hash_value_t;
 
+typedef struct {
+  GMutex *mutex;
+  GLibJsonRpcServer *server;
+  JsonNode *reply;
+} GLibJsonRpcAsyncQueryPrivate;
+
+static GLibJsonRpcAsyncQueryPrivate *glib_jsonrpc_server_query_new(GLibJsonRpcServer *server)
+{
+  GLibJsonRpcAsyncQueryPrivate *query = g_new0(GLibJsonRpcAsyncQueryPrivate, 1);
+  query->mutex = g_mutex_new();
+  query->server = server;
+  query->reply = NULL;
+  g_mutex_lock(query->mutex);
+
+  return query;
+}
+
+static void glib_jsonrpc_async_query_free(GLibJsonRpcAsyncQueryPrivate *query)
+{
+  g_mutex_unlock(query->mutex); 
+  g_mutex_free(query->mutex); // Why does this crash?
+  g_free(query);
+}
+
+GLibJsonRpcServer *glib_jsonrpc_async_query_get_server(GLibJsonRpcAsyncQuery *_query)
+{
+  GLibJsonRpcAsyncQueryPrivate *query = (GLibJsonRpcAsyncQueryPrivate*)_query;
+  return query->server;
+}
 
 static JsonNode* create_fault_response(int error_num, const char *message, int id)
 {
@@ -204,18 +231,27 @@ handler (GThreadedSocketService *service,
         response = create_fault_response(-2, "Busy!",id);
       else
         {
-          jsonrpc_server->async_busy = TRUE;
+          // With the embedding of the mutex in the query we should
+          // be able to handle more than one connection, so there
+          // is no need to protect against a busy state.
+          // jsonrpc_server->async_busy = TRUE;
+          GLibJsonRpcAsyncQueryPrivate *query = glib_jsonrpc_server_query_new((GLibJsonRpcServer*)jsonrpc_server);
           
           // Create a secondary main loop
           (*command_val->async_callback)((GLibJsonRpcServer*)jsonrpc_server,
+                                         (GLibJsonRpcAsyncQuery*)query,
                                          method,
                                          params,
                                          command_val->user_data);
           
-          // Lock on a mutex
-          g_mutex_lock(jsonrpc_server->mutex);
-          response = create_response(jsonrpc_server->reply, id);
+          // Lock on a mutex - Should probably be changed to a condition variable
+          g_mutex_lock(query->mutex);
+
+          response = create_response(query->reply, id);
           jsonrpc_server->async_busy = FALSE;
+
+          // Erase the query
+          glib_jsonrpc_async_query_free(query);
         }
     }
   else
@@ -299,8 +335,6 @@ GLibJsonRpcServer *glib_jsonrpc_server_new(int port)
   jsonrpc_server->command_hash = g_hash_table_new(g_str_hash,
                                                   g_str_equal);
 
-  jsonrpc_server->mutex = g_mutex_new();
-  g_mutex_lock(jsonrpc_server->mutex);
   return (GLibJsonRpcServer*)jsonrpc_server;
 }
 
@@ -358,13 +392,12 @@ int glib_jsonrpc_server_register_async_command(GLibJsonRpcServer *jsonrpc_server
   return 0;
 }
     
-int  glib_jsonrpc_server_send_async_response(GLibJsonRpcServer *_server,
+int  glib_jsonrpc_server_send_async_response(GLibJsonRpcAsyncQuery *_query,
                                              JsonNode *reply)
 {
-  GLibJsonRpcServerPrivate *server = (GLibJsonRpcServerPrivate *)_server;
-  server->reply = reply;
-
-  g_mutex_unlock(server->mutex);
+  GLibJsonRpcAsyncQueryPrivate *query = (GLibJsonRpcAsyncQueryPrivate *)_query;
+  query->reply = reply;
+  g_mutex_unlock(query->mutex);
 
   return TRUE;
 }

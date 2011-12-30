@@ -9,7 +9,7 @@ lib = env.Library("glib-jsonrpc",
                    "glib-jsonrpc-json.c"])
 
 env.Program("test-glib-jsonrpc-server",
-            ["test-glib-jsonrpc-server"],
+            ["test-glib-jsonrpc-server.c"],
             LIBS = lib + env['LIBS'])
 
 env.Program("test-glib-jsonrpc-client",

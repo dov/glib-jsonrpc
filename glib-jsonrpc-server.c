@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "glib-jsonrpc-server.h"
+#include "glib-jsonrpc-json.h"
 
 typedef struct {
   GLibJsonRpcServer server; 
@@ -45,25 +46,31 @@ typedef struct {
 
 typedef struct {
   GMutex *mutex;
+  GCond *cond;
   GLibJsonRpcServer *server;
   JsonNode *reply;
+  int error_num;
 } GLibJsonRpcAsyncQueryPrivate;
 
 static GLibJsonRpcAsyncQueryPrivate *glib_jsonrpc_server_query_new(GLibJsonRpcServer *server)
 {
   GLibJsonRpcAsyncQueryPrivate *query = g_new0(GLibJsonRpcAsyncQueryPrivate, 1);
+  query->cond = g_cond_new();
   query->mutex = g_mutex_new();
   query->server = server;
   query->reply = NULL;
-  g_mutex_lock(query->mutex);
+  query->error_num = 0;
+  //  g_mutex_lock(query->mutex);
 
   return query;
 }
 
 static void glib_jsonrpc_async_query_free(GLibJsonRpcAsyncQueryPrivate *query)
 {
-  g_mutex_unlock(query->mutex); 
+  g_mutex_unlock(query->mutex);
+  g_cond_free(query->cond);
   g_mutex_free(query->mutex); // Why does this crash?
+  json_node_free(query->reply);
   g_free(query);
 }
 
@@ -73,7 +80,7 @@ GLibJsonRpcServer *glib_jsonrpc_async_query_get_server(GLibJsonRpcAsyncQuery *_q
   return query->server;
 }
 
-static JsonNode* create_fault_response(int error_num, const char *message, int id)
+static JsonNode* create_fault_value_response(int error_num, JsonNode *msg_node, int id)
 {
   JsonBuilder *builder = json_builder_new ();
 
@@ -85,7 +92,7 @@ static JsonNode* create_fault_response(int error_num, const char *message, int i
   json_builder_set_member_name (builder, "code");
   json_builder_add_int_value(builder, error_num);
   json_builder_set_member_name (builder, "message");
-  json_builder_add_string_value (builder, message);
+  json_builder_add_value (builder, json_node_copy(msg_node));
   json_builder_end_object (builder);
   json_builder_set_member_name(builder, "id");
   if (id < 0)
@@ -96,6 +103,15 @@ static JsonNode* create_fault_response(int error_num, const char *message, int i
   JsonNode *node = json_node_copy(json_builder_get_root (builder));
   
   g_object_unref(builder);
+  return node;
+}
+  
+static JsonNode* create_fault_msg_response(int error_num, const char *message, int id)
+{
+  JsonNode *msg_node = json_node_new(JSON_NODE_VALUE);
+  json_node_set_string(msg_node, message);
+  JsonNode *node = create_fault_value_response(error_num, msg_node, id);
+  json_node_free(msg_node);
   return node;
 }
     
@@ -112,19 +128,15 @@ static JsonNode* create_response(JsonNode *reply, int id)
   json_builder_set_member_name (builder, "id");
   json_builder_add_int_value (builder, id);
 
+  json_builder_set_member_name (builder, "result");
+
   if (reply)
-    {
-      json_builder_set_member_name (builder, "result");
-      json_builder_add_value (builder, reply);
-      json_builder_end_object (builder);
-    }
+    json_builder_add_value (builder, json_node_copy(reply));
   else
-    {
-      // default "ok" message
-      json_builder_set_member_name (builder, "result");
-      json_builder_add_string_value (builder, "ok");
-      json_builder_end_object (builder);
-    }
+    // default "ok" message
+    json_builder_add_string_value (builder, "ok");
+
+  json_builder_end_object (builder);
   
   JsonNode *node = json_node_copy(json_builder_get_root (builder));
 
@@ -224,11 +236,11 @@ handler (GThreadedSocketService *service,
     command_val = g_hash_table_lookup(jsonrpc_server->command_hash,
                                       method);
   if (!command_val)
-    response = create_fault_response(-2, "No such method!",id);
+    response = create_fault_msg_response(-2, "No such method!",id);
   else if (command_val->async_callback)
     {
       if (jsonrpc_server->async_busy)
-        response = create_fault_response(-2, "Busy!",id);
+        response = create_fault_msg_response(-2, "Busy!",id);
       else
         {
           // With the embedding of the mutex in the query we should
@@ -244,10 +256,15 @@ handler (GThreadedSocketService *service,
                                          params,
                                          command_val->user_data);
           
-          // Lock on a mutex - Should probably be changed to a condition variable
+          // Lock on a mutex 
           g_mutex_lock(query->mutex);
+          g_cond_wait(query->cond, query->mutex);
+          g_mutex_unlock(query->mutex);
 
-          response = create_response(query->reply, id);
+          if (query->error_num != 0)
+            response = create_fault_value_response(query->error_num,query->reply,id);
+          else
+            response = create_response(query->reply, id);
           jsonrpc_server->async_busy = FALSE;
 
           // Erase the query
@@ -266,9 +283,12 @@ handler (GThreadedSocketService *service,
 
       if (ret == 0)
         response = create_response(reply,id);
-      else 
+      else
         // For faults expect a string response containing the error
-        response = create_fault_response(ret, json_node_get_string(reply),id);
+        response = create_fault_value_response(ret, reply,id);
+
+      if (reply)
+        json_node_free(reply);
     }
 
   if (response)
@@ -327,8 +347,6 @@ GLibJsonRpcServer *glib_jsonrpc_server_new(int port)
       g_free(jsonrpc_server);
       return NULL;
     }
-
-  g_print ("Echo service listening on port %d\n", port);
 
   g_signal_connect (jsonrpc_server->service, "run", G_CALLBACK (handler), jsonrpc_server);
 
@@ -393,10 +411,14 @@ int glib_jsonrpc_server_register_async_command(GLibJsonRpcServer *jsonrpc_server
 }
     
 int  glib_jsonrpc_server_send_async_response(GLibJsonRpcAsyncQuery *_query,
+                                             int error_num,
                                              JsonNode *reply)
 {
   GLibJsonRpcAsyncQueryPrivate *query = (GLibJsonRpcAsyncQueryPrivate *)_query;
   query->reply = reply;
+  query->error_num = error_num;
+  g_mutex_lock(query->mutex);
+  g_cond_broadcast(query->cond);
   g_mutex_unlock(query->mutex);
 
   return TRUE;

@@ -79,6 +79,7 @@ gboolean async_pong(gpointer data)
   json_node_set_string(response, "async_pong");
 
   glib_jsonrpc_server_send_async_response(query,
+                                          0,
                                           response);
   return 0;
 }

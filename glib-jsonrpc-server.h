@@ -63,6 +63,7 @@ int glib_jsonrpc_server_register_async_command(GLibJsonRpcServer *jsonrpc_server
                                                gpointer user_data);
 // The json node ownershap is transfered.
 int  glib_jsonrpc_server_send_async_response(GLibJsonRpcAsyncQuery *query,
+                                             int error_num,
                                              JsonNode *response);
 
 

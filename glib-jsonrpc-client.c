@@ -102,7 +102,7 @@ int glib_jsonrpc_client_call(GLibJsonRpcClient *client,
                          "POST / HTTP/1.1\r\n"
                          "User-Agent: GlibJsonRpcClient\r\n"
                          "Host: foo\r\n"
-                         "Content-Type: Content-type: application/x-www-form-urlencoded\r\n"
+                         "Content-Type: application/x-www-form-urlencoded\r\n"
                          "Content-Length: %d\r\n"
                          "\r\n"
                          ,

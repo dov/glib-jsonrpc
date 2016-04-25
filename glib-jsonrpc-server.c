@@ -45,8 +45,8 @@ typedef struct {
 } command_hash_value_t;
 
 typedef struct {
-  GMutex *mutex;
-  GCond *cond;
+  GMutex mutex;
+  GCond cond;
   GLibJsonRpcServer *server;
   JsonNode *reply;
   int error_num;
@@ -55,8 +55,8 @@ typedef struct {
 static GLibJsonRpcAsyncQueryPrivate *glib_jsonrpc_server_query_new(GLibJsonRpcServer *server)
 {
   GLibJsonRpcAsyncQueryPrivate *query = g_new0(GLibJsonRpcAsyncQueryPrivate, 1);
-  query->cond = g_cond_new();
-  query->mutex = g_mutex_new();
+  g_cond_init(&query->cond);
+  g_mutex_init(&query->mutex);
   query->server = server;
   query->reply = NULL;
   query->error_num = 0;
@@ -67,9 +67,6 @@ static GLibJsonRpcAsyncQueryPrivate *glib_jsonrpc_server_query_new(GLibJsonRpcSe
 
 static void glib_jsonrpc_async_query_free(GLibJsonRpcAsyncQueryPrivate *query)
 {
-  g_mutex_unlock(query->mutex);
-  g_cond_free(query->cond);
-  g_mutex_free(query->mutex); // Why does this crash?
   json_node_free(query->reply);
   g_free(query);
 }
@@ -256,10 +253,10 @@ handler (GThreadedSocketService *service,
                                          params,
                                          command_val->user_data);
           
-          // Lock on a mutex 
-          g_mutex_lock(query->mutex);
-          g_cond_wait(query->cond, query->mutex);
-          g_mutex_unlock(query->mutex);
+          // Lock on a mutex
+          g_mutex_lock(&query->mutex);
+          g_cond_wait(&query->cond, &query->mutex);
+          g_mutex_unlock(&query->mutex);
 
           if (query->error_num != 0)
             response = create_fault_value_response(query->error_num,query->reply,id);
@@ -312,7 +309,7 @@ handler (GThreadedSocketService *service,
                              "Server: GlibJsonRPC server\r\n"
                              "\r\n"
                              "%s",
-                             len,
+                             (int)len,
                              content_string
                              );
       g_free(content_string);
@@ -417,9 +414,9 @@ int  glib_jsonrpc_server_send_async_response(GLibJsonRpcAsyncQuery *_query,
   GLibJsonRpcAsyncQueryPrivate *query = (GLibJsonRpcAsyncQueryPrivate *)_query;
   query->reply = reply;
   query->error_num = error_num;
-  g_mutex_lock(query->mutex);
-  g_cond_broadcast(query->cond);
-  g_mutex_unlock(query->mutex);
+  g_mutex_lock(&query->mutex);
+  g_cond_broadcast(&query->cond);
+  g_mutex_unlock(&query->mutex);
 
   return TRUE;
 }

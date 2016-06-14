@@ -89,7 +89,10 @@ static JsonNode* create_fault_value_response(int error_num, JsonNode *msg_node, 
   json_builder_set_member_name (builder, "code");
   json_builder_add_int_value(builder, error_num);
   json_builder_set_member_name (builder, "message");
-  json_builder_add_value (builder, json_node_copy(msg_node));
+  if (msg_node)
+    json_builder_add_value (builder, json_node_copy(msg_node));
+  else
+    json_builder_add_null_value(builder);
   json_builder_end_object (builder);
   json_builder_set_member_name(builder, "id");
   if (id < 0)
@@ -97,8 +100,8 @@ static JsonNode* create_fault_value_response(int error_num, JsonNode *msg_node, 
   else
     json_builder_add_int_value(builder, id);
   json_builder_end_object (builder);
-  JsonNode *node = json_node_copy(json_builder_get_root (builder));
-  
+  JsonNode *node = json_builder_get_root (builder);
+
   g_object_unref(builder);
   return node;
 }
@@ -134,8 +137,8 @@ static JsonNode* create_response(JsonNode *reply, int id)
     json_builder_add_string_value (builder, "ok");
 
   json_builder_end_object (builder);
-  
-  JsonNode *node = json_node_copy(json_builder_get_root (builder));
+
+  JsonNode *node = json_builder_get_root (builder);
 
   g_object_unref(builder);
   return node;
@@ -156,7 +159,7 @@ handler (GThreadedSocketService *service,
     = g_socket_connection_get_remote_address(connection,
                                              &error);
   GInetAddress *addr = g_inet_socket_address_get_address(G_INET_SOCKET_ADDRESS(sockaddr));
-
+  g_object_unref (sockaddr);
   if (!jsonrpc_server->allow_non_loopback_connections)
     {
 #if 0
@@ -168,7 +171,7 @@ handler (GThreadedSocketService *service,
       gchar *addr_string = g_inet_address_to_string(addr);
       gboolean is_local = g_strstr_len(addr_string, -1, "127.0.0.1") != NULL;
       g_free(addr_string);
-      if (!is_local) 
+      if (!is_local)
         return TRUE; // silently fail
     }
 
@@ -223,6 +226,7 @@ handler (GThreadedSocketService *service,
   json_reader_read_member (reader, "id");
   gint64 id = json_reader_get_int_value(reader);
   json_reader_end_member (reader);
+  g_object_unref(reader);
 
   // Build the response which is either a response object or an error object
   JsonNode *response = NULL;
@@ -270,7 +274,7 @@ handler (GThreadedSocketService *service,
     }
   else
     {
-      JsonNode *reply;
+      JsonNode *reply = NULL;
 
       int ret = (*command_val->callback)((GLibJsonRpcServer*)jsonrpc_server,
                                          method,
@@ -358,6 +362,7 @@ void glib_jsonrpc_server_free(GLibJsonRpcServer *_server)
   GLibJsonRpcServerPrivate *server = (GLibJsonRpcServerPrivate *)_server;
   
   g_object_unref(G_OBJECT(server->service));
+  g_hash_table_unref (server->command_hash);
   g_free(server);
 }
 
